@@ -87,7 +87,9 @@ CFLAGSB = $(CFLAGSB) /D "_USING_V110_SDK71_"
 # /GF  : enable read-only string pooling
 # /MP  : use muliple processors to speed up compilation
 # Note: /MP not used as it might be causing extreme flakiness on EC2 buildbot
-CFLAGSB = $(CFLAGSB) /WX /GR- /Zi /GS /Gy /GF
+#CFLAGSB = $(CFLAGSB) /WX /GR- /Zi /GS /Gy /GF
+#+ls@150114; -/WX;
+CFLAGSB = $(CFLAGSB) /GR- /Zi /GS /Gy /GF
 
 # disable the default /arch:SSE2 for 32-bit builds
 !if "$(PLATFORM)"!="X64"
