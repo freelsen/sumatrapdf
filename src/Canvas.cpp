@@ -44,10 +44,77 @@
 #include "Toolbar.h"
 #include "Translations.h"
 
+//+ls@150206;
+#include <vector>
+using namespace std;
+
 // these can be global, as the mouse wheel can't affect more than one window at once
 static int gDeltaPerLine = 0;
 // set when WM_MOUSEWHEEL has been passed on (to prevent recursion)
 static bool gWheelMsgRedirect = false;
+
+// --------------------------------------------------------------------------
+//+ls@150206;
+static vector<int> lsmarks;// = new vector<int>();
+
+static void lstest(WindowInfo& win)
+{
+	PAINTSTRUCT ps;
+	HDC hdc = BeginPaint(win.hwndCanvas, &ps);
+	TextOut(hdc, 0, 0, TEXT("hello ls"), 8);
+	EndPaint(win.hwndCanvas, &ps);
+}
+static double lsgetPos(WindowInfo& win)
+{
+	SCROLLINFO si = { 0 };
+	si.cbSize = sizeof(si);
+	si.fMask = SIF_ALL;
+	GetScrollInfo(win.hwndCanvas, SB_VERT, &si);
+	double f = (double)si.nPos / (double)si.nMax;
+	return f;
+}
+static void lsDrawScrollbar(WindowInfo& win, HDC &hdc, PAINTSTRUCT &ps)
+{
+	// get client rect;
+	RECT rc = ps.rcPaint;
+	TextOut(hdc, rc.right / 2, rc.bottom / 2, TEXT("hello ls"), 8);
+	// draw ls-scroll-bar;
+	RECT lsbar = rc;
+	lsbar.left = 0;
+	lsbar.right = 20;
+	FillRect(hdc, &lsbar, GetStockBrush(GRAY_BRUSH));
+	// draw current-location in ls-scrool-bar;
+	//SCROLLINFO si = { 0 };
+	//si.cbSize = sizeof(si);
+	//si.fMask = SIF_ALL;
+	//GetScrollInfo(win.hwndCanvas, SB_VERT, &si);
+
+	RECT lspos = lsbar;
+	double f = lsgetPos(win);// double)si.nPos / (double)si.nMax;
+	lspos.top = lsbar.bottom *f;
+	lspos.bottom = lspos.top + 10;
+	FillRect(hdc, &lspos, GetStockBrush(BLACK_BRUSH));
+	// draw ls-bookmarks;
+
+	lsmarks.push_back(10);
+	lsmarks.push_back(100);
+	lsmarks.push_back(400);
+	lsmarks.push_back(600);
+	RECT rcmark = lsbar;
+	for (int i = 0; i < lsmarks.size(); i++)
+	{
+		int pos = lsmarks[i];
+		rcmark.top = pos;
+		rcmark.bottom = rcmark.top + 5;
+		FillRect(hdc, &rcmark, GetStockBrush(DKGRAY_BRUSH));
+	}
+}
+static void lsOnMouseLeftBottonUp(WindowInfo& win, int x, int y, WPARAM key)
+{
+	// add bookmark;
+
+}
+// --------------------------------------------------------------------------
 
 void UpdateDeltaPerLine()
 {
@@ -270,6 +337,9 @@ static void OnMouseLeftButtonUp(WindowInfo& win, int x, int y, WPARAM key)
     if (MA_IDLE == win.mouseAction || MA_DRAGGING_RIGHT == win.mouseAction)
         return;
     AssertCrash(MA_SELECTING == win.mouseAction || MA_SELECTING_TEXT == win.mouseAction || MA_DRAGGING == win.mouseAction);
+
+	//+ls
+	lsOnMouseLeftBottonUp(win, x, y, key);
 
     bool didDragMouse = !win.dragStartPending ||
         abs(x - win.dragStart.x) > GetSystemMetrics(SM_CXDRAG) ||
@@ -685,6 +755,7 @@ static void DrawDocument(WindowInfo& win, HDC hdc, RECT *rcArea)
         DebugShowLinks(*dm, hdc);
 }
 
+
 static void OnPaintDocument(WindowInfo& win)
 {
     Timer t;
@@ -702,6 +773,9 @@ static void OnPaintDocument(WindowInfo& win)
         DrawDocument(win, win.buffer->GetDC(), &ps.rcPaint);
         win.buffer->Flush(hdc);
     }
+
+	//+ls@150306;
+	lsDrawScrollbar(win,hdc, ps);
 
     EndPaint(win.hwndCanvas, &ps);
     if (gShowFrameRate) {

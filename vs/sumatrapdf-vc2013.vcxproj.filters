@@ -58,6 +58,9 @@
     <Filter Include="ext\mupdf\xps">
       <UniqueIdentifier>{29dc662e-3fee-b3c4-8186-205cf82221c0}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ls">
+      <UniqueIdentifier>{aa0150fc-89b9-4fa6-a6d7-d11c39ad2dbc}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\AppPrefs.cpp">
