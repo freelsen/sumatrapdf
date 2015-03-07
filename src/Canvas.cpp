@@ -45,6 +45,7 @@
 #include "Translations.h"
 
 //+ls@150206;
+#include "tchar.h"
 #include <vector>
 using namespace std;
 
@@ -55,7 +56,32 @@ static bool gWheelMsgRedirect = false;
 
 // --------------------------------------------------------------------------
 //+ls@150206;
-static vector<int> lsmarks;// = new vector<int>();
+
+static TCHAR pt_message[2048];
+static void lsdebugout(TCHAR *msg, ...)
+{
+//#ifdef _DEBUG
+	//if (!check()) return;
+
+	TCHAR *text = pt_message;
+
+	va_list	argptr;
+	va_start(argptr, msg);
+	_vstprintf(text, msg, argptr);
+	va_end(argptr);
+
+	//if (pt_msg != NULL)
+	//{
+	//	pt_msg(text);
+	//}
+	//else
+	{
+		//printf( "%s", text );
+		//TRACE("%s", text);
+		OutputDebugString(text);
+	}
+//#endif
+}
 
 static void lstest(WindowInfo& win)
 {
@@ -64,55 +90,301 @@ static void lstest(WindowInfo& win)
 	TextOut(hdc, 0, 0, TEXT("hello ls"), 8);
 	EndPaint(win.hwndCanvas, &ps);
 }
+static SCROLLINFO lssi = { 0 };
 static double lsgetPos(WindowInfo& win)
 {
-	SCROLLINFO si = { 0 };
-	si.cbSize = sizeof(si);
-	si.fMask = SIF_ALL;
-	GetScrollInfo(win.hwndCanvas, SB_VERT, &si);
-	double f = (double)si.nPos / (double)si.nMax;
+	lssi.cbSize = sizeof(lssi);
+	lssi.fMask = SIF_ALL;
+	GetScrollInfo(win.hwndCanvas, SB_VERT, &lssi);
+	double f = (double)lssi.nPos / (double)lssi.nMax;
 	return f;
 }
-static void lsDrawScrollbar(WindowInfo& win, HDC &hdc, PAINTSTRUCT &ps)
+//static vector<int> lsmarks;// = new vector<int>();
+static vector<RECT> lsmarkrcs;
+static int lsmarkidx = -1;
+static int lsmarkheight = 10;
+
+static RECT lsbarrc;
+static int lsbarheight = 8;
+static int lsbarwidth = 20;
+static int lspos = 0;
+bool lsisinRect(RECT &rc, int x, int y)
+{
+	return ((y > rc.top && y <rc.bottom)
+		&& (x>rc.left && x < rc.right));
+}
+void lsDrawScrollbar(WindowInfo& win, HDC &hdc, PAINTSTRUCT &ps)
 {
 	// get client rect;
 	RECT rc = ps.rcPaint;
-	TextOut(hdc, rc.right / 2, rc.bottom / 2, TEXT("hello ls"), 8);
+	//TextOut(hdc, rc.right / 2, rc.bottom / 2, TEXT("hello ls"), 8);
 	// draw ls-scroll-bar;
-	RECT lsbar = rc;
-	lsbar.left = 0;
-	lsbar.right = 20;
-	FillRect(hdc, &lsbar, GetStockBrush(GRAY_BRUSH));
-	// draw current-location in ls-scrool-bar;
-	//SCROLLINFO si = { 0 };
-	//si.cbSize = sizeof(si);
-	//si.fMask = SIF_ALL;
-	//GetScrollInfo(win.hwndCanvas, SB_VERT, &si);
+	lsbarrc = rc;
+	lsbarrc.left = 0;
+	lsbarrc.right = lsbarrc.left+lsbarwidth;
+	FillRect(hdc, &lsbarrc, GetStockBrush(GRAY_BRUSH));
 
-	RECT lspos = lsbar;
-	double f = lsgetPos(win);// double)si.nPos / (double)si.nMax;
-	lspos.top = lsbar.bottom *f;
-	lspos.bottom = lspos.top + 10;
-	FillRect(hdc, &lspos, GetStockBrush(BLACK_BRUSH));
 	// draw ls-bookmarks;
-
-	lsmarks.push_back(10);
-	lsmarks.push_back(100);
-	lsmarks.push_back(400);
-	lsmarks.push_back(600);
-	RECT rcmark = lsbar;
-	for (int i = 0; i < lsmarks.size(); i++)
+	for (int i = 0; i < lsmarkrcs.size(); i++)
 	{
-		int pos = lsmarks[i];
-		rcmark.top = pos;
-		rcmark.bottom = rcmark.top + 5;
-		FillRect(hdc, &rcmark, GetStockBrush(DKGRAY_BRUSH));
+		rc = lsmarkrcs[i];
+		//rcmark.top = pos;
+		//rcmark.bottom = rcmark.top + 5;
+		FillRect(hdc, &rc, GetStockBrush(DKGRAY_BRUSH));
 	}
+
+	// draw current-location in ls-scrool-bar;
+	RECT pos = lsbarrc;
+	double f = lsgetPos(win);// double)si.nPos / (double)si.nMax;
+	pos.top = lsbarrc.bottom *f;
+	pos.bottom = pos.top + lsbarheight;
+	//original = SelectObject(hdc, GetStockObject(DC_PEN));
+	SetDCBrushColor(hdc, RGB(255, 0, 0));
+	Rectangle(hdc, pos.left, pos.top, pos.right, pos.bottom);
+	//FillRect(hdc, &pos, GetStockBrush(BLACK_BRUSH));
+	//SelectObject(hdc, original);
+	lspos = pos.top;
+	
 }
-static void lsOnMouseLeftBottonUp(WindowInfo& win, int x, int y, WPARAM key)
+
+int lsgetMarkIndex(int x, int y)
+{
+	vector<RECT>::iterator it;
+	int i = 0;
+	for (it = lsmarkrcs.begin(); it != lsmarkrcs.end(); it++, i++)
+	{
+		RECT rc = *it;
+		if (lsisinRect(rc, x, y))
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+/*
+bool lsonMouseLeftButtonDown(WindowInfo& win, int x, int y, WPARAM key)
+{
+	// check is in lsbar area;
+	lsmarkidx = -1;
+	if (lsisinRect(lsbarrc, x, y))
+	{
+		int idx = lsgetMarkIndex(x, y); // already; existed;
+		if (idx >= 0)
+		{
+			lsmarkidx = idx;
+		}
+		else 
+		{
+			//lsdebugout(TEXT(">lsonMouseLeftButtonDown: (x,y)=(%d,%d)\r\n"), x, y);
+			// add bookmark;
+			RECT rc = lsbarrc;
+			rc.top = y;
+			rc.bottom = rc.top + lsmarkheight;// 5;
+			lsmarkrcs.push_back(rc);
+
+			::InvalidateRect(win.hwndCanvas, &lsbarrc, true);
+			::UpdateWindow(win.hwndCanvas);
+		}
+
+		return true;
+	}
+	else
+		return false;
+}
+*/
+void lsonMouseLeftButtonDbClick(WindowInfo& win, int x, int y, WPARAM key)
 {
 	// add bookmark;
+	double f = lsgetPos(win);
+	RECT rc = lsbarrc;
+	rc.top = f * lsbarrc.bottom;
+	rc.bottom = rc.top + lsmarkheight;// 5;
+	lsmarkrcs.push_back(rc);
 
+	::InvalidateRect(win.hwndCanvas, &lsbarrc, true);
+	::UpdateWindow(win.hwndCanvas);
+}
+bool lsonMouseLeftButtonDown(WindowInfo& win, int x, int y, WPARAM key)
+{
+	//lsdebugout(TEXT(">lsonMouseLeftButtonUp: (x,y)=(%d,%d)\r\n"), x, y);
+	if (lsisinRect(lsbarrc, x, y))
+	{
+		//lsdebugout(TEXT(">lsonMouseRightButtonDown: true (x,y)=(%d,%d)\r\n"), x, y);
+		// check which bookmark is in;
+		int idx = lsgetMarkIndex(x, y);
+		if (idx >= 0)
+		{
+			// goto page;
+			RECT rc = lsmarkrcs[idx];
+			int pos = (double)(rc.top - lspos) / (double)lsbarrc.bottom * lssi.nMax;
+			win.MoveDocBy(0, pos);
+		}
+
+		return true;
+	}
+	else
+		return false;
+}
+bool lsonMouseLeftButtonUp(WindowInfo& win, int x, int y, WPARAM key)
+{
+	return false;
+}
+bool lsonMouseRightButtonDown(WindowInfo& win, int x, int y, WPARAM key)
+{
+	if (lsisinRect(lsbarrc, x, y))
+	{
+		int idx = lsgetMarkIndex(x, y);
+		if (idx >=0)
+		{
+			// delete bookmark;
+			lsdebugout(TEXT(">lsonMouseRightButtonDown: erase idx=%d\r\n"), idx);
+			//lsmarkrcs.erase(it);
+			lsmarkrcs.erase(lsmarkrcs.begin() + idx);
+			::InvalidateRect(win.hwndCanvas, &lsbarrc, true);
+			::UpdateWindow(win.hwndCanvas);
+		}
+		return true;
+	}
+	return false;
+}
+
+int lsgetMillisecond()
+{
+	//SYSTEMTIME st;
+	////GetSystemTime(&st);
+	//GetLocalTime(&st);
+	//lsdebugout(TEXT(">lsonDragging: %02d:%02d:%02d,%d\r\n"),
+	//	st.wHour, st.wMinute, st.wSecond,
+	//	st.wMilliseconds);
+
+	// way 2;
+	FILETIME ft;
+	GetSystemTimeAsFileTime(&ft);
+	long long ll_now = (LONGLONG)ft.dwLowDateTime
+		+ ((LONGLONG)(ft.dwHighDateTime) << 32LL); // to nonosecond;
+	int ms = ll_now / 10000; // to millisecond;
+	return ms;
+}
+static bool lsdragms = false;
+static int lspritime = 0;		// privous time;
+static int lsmintimegap = 10;	// in millisecond;
+
+static bool lsdragdis = false;
+static int lsprix = 0;			// privous mouse location;
+static int lspriy = 0;
+
+void lsonDragStart()
+{
+	lsdragms = true;
+	lsdragdis = true;
+}
+void lsonDragStop()
+{
+	lsdragms = false;
+	lsdragdis = false;
+}
+int lscalMillisecond()
+{
+	int ms = lsgetMillisecond();
+	if (lsdragms)
+	{
+		lsdragms = false;
+		lspritime = ms;
+		return -1;			// initial value;
+	}
+	// cal time diff;
+	int dt = ms - lspritime;
+	if (dt < lsmintimegap)
+		return 0;
+	else
+		lspritime = ms;
+	return ms;
+}
+int lscalDistance(int x, int y)
+{
+	if (lsdragdis)
+	{
+		lsdragdis = false;
+		lsprix = x;
+		lspriy = y;
+		return 0;
+	}
+	// cal location diff;
+	int dx = x - lsprix;
+	int dy = y - lspriy;
+	lsprix = x;
+	lspriy = y;
+
+	return dy;
+}
+/*
+double lscalVelocity(int x, int y)
+{
+	int ms = lsgetMillisecond();
+	if (lsdragms)
+	{
+		lsdragms = false;
+		lspritime = ms;
+		lsprix = x;
+		lspriy = y;
+		return 0;
+	}
+	// cal time diff;
+	int dt = ms - lspritime;
+	if (dt < lsmintimegap)
+		return 0;
+	else
+		lspritime = ms;
+	// cal location diff;
+	int dx = x - lsprix;
+	int dy = y - lspriy;
+	lsprix = x;
+	lspriy = y;
+	// cal velocity;
+	//if (dy < 0) dy = -dy;
+	int dy2 = dy * 10;
+	double v = (double)dy2 / (double)dt;
+	lsdebugout(TEXT(">lscalVelocity: dt=%d,dy2=%d,v=%.4f\r\n"), dt,dy2,v);
+
+	return v;
+}
+
+bool lsonDragging(WindowInfo& win, int x, int y)
+{
+	double v = lscalVelocity(x,y);
+	if (v == 0)	
+		return false;
+	// 
+	double f = 0;
+	if (v < 0)
+		f = -pow(2, -v);
+	else
+		f = pow(2, v);
+	
+	int n = f;
+	n *= lssi.nPage/10;
+
+	lsdebugout(TEXT(">lsonDragging: move=%d\r\n"), n);
+	win.MoveDocBy(0, n);
+}
+*/
+bool lsonDragging(WindowInfo &win, int x, int y)
+{
+	int d = lscalMillisecond();
+	int dy = 0;
+	if (d == -1)		//set initial value;
+	{
+		dy = lscalDistance(x, y);
+		return false;
+	}
+	else if (d == 0)	// time gap is too small;
+		return false;
+	else
+		dy = lscalDistance(x, y);
+	//
+	int dis = dy * ((double)lssi.nPage / 10);
+	lsdebugout(TEXT(">lsonDragging: move=%d\r\n"), dis);
+	win.MoveDocBy(0, dis);
 }
 // --------------------------------------------------------------------------
 
@@ -209,10 +481,14 @@ static void OnDraggingStart(WindowInfo& win, int x, int y, bool right=false)
     win.dragPrevPos = PointI(x, y);
     if (GetCursor())
         SetCursor(gCursorDrag);
+	
+	lsonDragStart();//+ls@150206;
 }
 
 static void OnDraggingStop(WindowInfo& win, int x, int y, bool aborted)
 {
+	lsonDragStop();	//+ls@150306;
+
     if (GetCapture() != win.hwndCanvas)
         return;
 
@@ -274,7 +550,10 @@ static void OnMouseMove(WindowInfo& win, int x, int y, WPARAM flags)
         break;
     case MA_DRAGGING:
     case MA_DRAGGING_RIGHT:
-        win.MoveDocBy(win.dragPrevPos.x - x, win.dragPrevPos.y - y);
+		lsonDragging(win,x, y);
+		//lsdebugout(TEXT(">onMouseMove: MA_dragging, dx=%d,dy=%d\r\n"),
+		//	win.dragPrevPos.x - x, win.dragPrevPos.y - y);
+		//win.MoveDocBy(win.dragPrevPos.x - x, win.dragPrevPos.y - y);
         break;
     }
     // needed also for detecting cursor movement in presentation mode
@@ -303,6 +582,11 @@ static void OnMouseLeftButtonDown(WindowInfo& win, int x, int y, WPARAM key)
     CrashIf(!win.AsFixed());
 
     SetFocus(win.hwndFrame);
+
+	if (lsonMouseLeftButtonDown(win, x, y, key)) // +ls@150307;
+	{
+		return;
+	}
 
     AssertCrash(!win.linkOnLastButtonDown);
     DisplayModel *dm = win.AsFixed();
@@ -334,12 +618,12 @@ static void OnMouseLeftButtonDown(WindowInfo& win, int x, int y, WPARAM key)
 static void OnMouseLeftButtonUp(WindowInfo& win, int x, int y, WPARAM key)
 {
     AssertCrash(win.AsFixed());
+	//+ls
+	lsonMouseLeftButtonUp(win, x, y, key);
+
     if (MA_IDLE == win.mouseAction || MA_DRAGGING_RIGHT == win.mouseAction)
         return;
-    AssertCrash(MA_SELECTING == win.mouseAction || MA_SELECTING_TEXT == win.mouseAction || MA_DRAGGING == win.mouseAction);
-
-	//+ls
-	lsOnMouseLeftBottonUp(win, x, y, key);
+    AssertCrash(MA_SELECTING == win.mouseAction || MA_SELECTING_TEXT == win.mouseAction || MA_DRAGGING == win.mouseAction);	
 
     bool didDragMouse = !win.dragStartPending ||
         abs(x - win.dragStart.x) > GetSystemMetrics(SM_CXDRAG) ||
@@ -406,6 +690,8 @@ static void OnMouseLeftButtonDblClk(WindowInfo& win, int x, int y, WPARAM key)
         return;
     }
 
+	lsonMouseLeftButtonDbClick(win, x, y, key); // +ls@150307;
+
     bool dontSelect = false;
     if (gGlobalPrefs->enableTeXEnhancements && !(key & ~MK_LBUTTON))
         dontSelect = OnInverseSearch(&win, x, y);
@@ -471,6 +757,11 @@ static void OnMouseRightButtonDown(WindowInfo& win, int x, int y, WPARAM key)
     AssertCrash(win.AsFixed());
 
     SetFocus(win.hwndFrame);
+
+	if (lsonMouseRightButtonDown(win, x, y,key))
+	{
+		return;
+	}
 
     win.dragStartPending = true;
     win.dragStart = PointI(x, y);
