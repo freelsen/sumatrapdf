@@ -113,20 +113,25 @@ bool lsisinRect(RECT &rc, int x, int y)
 		&& (x>rc.left && x < rc.right));
 }
 //static vector<int> lsmarks;// = new vector<int>();
-static map<int, RECT> lsmarkmap;
-map<int, RECT>::iterator lsfindMark(int x, int y)
+static WindowInfo * lswinfix = NULL;
+typedef struct {
+	RECT rc;
+	int pageno;
+}lsmarkinfo_t;
+static map<int, lsmarkinfo_t> lsmarkmap;
+map<int,lsmarkinfo_t>::iterator lsfindMark(int x, int y)
 {
-	map<int, RECT>::iterator it;
+	map<int,lsmarkinfo_t>::iterator it;
 	for (it = lsmarkmap.begin(); it != lsmarkmap.end(); it++)
 	{
-		if (lsisinRect(it->second, x,y))
+		if (lsisinRect(it->second.rc, x,y))
 			return it;
 	}
 	return lsmarkmap.end();
 }
-map<int, RECT>::iterator lsfindMark(int pos)
+map<int,lsmarkinfo_t>::iterator lsfindMark(int pos)
 {
-	map<int, RECT>::iterator it;
+	map<int,lsmarkinfo_t>::iterator it;
 	for (it = lsmarkmap.begin(); it != lsmarkmap.end(); it++)
 	{
 		if (it->first == pos)
@@ -141,23 +146,14 @@ static int lsmarkheight = 30;
 
 static RECT lsbarrc;
 static int lsbarheight = 8;
-static int lsbarwidth = 20;
+static int lsbarwidth = 30;
 static int lspos = 0;
 
-//int lsgetMarkIndex(int x, int y)
-//{
-//	vector<RECT>::iterator it;
-//	int i = 0;
-//	for (it = lsmarkrcs.begin(); it != lsmarkrcs.end(); it++, i++)
-//	{
-//		RECT rc = *it;
-//		if (lsisinRect(rc, x, y))
-//		{
-//			return i;
-//		}
-//	}
-//	return -1;
-//}
+int lsgetPageNo()
+{
+	DisplayModel *dm = lswinfix->ctrl->AsFixed();
+	return dm->CurrentPageNo();
+}
 bool lsaddMark( int pos)
 {
 	if (lsmarkmap.size() >= lsmarknummax - 1)
@@ -166,16 +162,20 @@ bool lsaddMark( int pos)
 		return false;
 	}
 	//
-	map<int, RECT>::iterator it = lsfindMark(pos);
+	map<int,lsmarkinfo_t>::iterator it = lsfindMark(pos);
 	if (it != lsmarkmap.end())
 		return false;
 	else
 	{
-		RECT rc = lsbarrc;
-		rc.top = pos;
-		rc.bottom = rc.top + lsmarkheight;// 5;
+		lsmarkinfo_t mk;
+		mk.rc = lsbarrc;
+		//RECT rc = lsbarrc;
+		mk.rc.top = pos;
+		mk.rc.bottom = mk.rc.top + lsmarkheight;// 5;
 		//lsmarkrcs.push_back(rc);
-		lsmarkmap.insert(pair<int, RECT>(pos, rc));
+		mk.pageno = lsgetPageNo();
+		//lsdebugout(TEXT(">lsaddmark: pageno=%d\r\n"), mk.pageno);
+		lsmarkmap.insert(pair<int, lsmarkinfo_t>(pos, mk));
 
 		return true;
 	}
@@ -191,13 +191,19 @@ void lsdrawMarks(HDC &hdc)
 	int hmark = lsmarkheight * 2;
 
 	//
-	map<int, RECT>::iterator it = lsmarkmap.begin();
+	map<int,lsmarkinfo_t>::iterator it = lsmarkmap.begin();
 	int pos = hmark;
+	RECT rc;
 	for (; it != lsmarkmap.end(); it++, pos+= hmark)
 	{
-		it->second.top = pos;
-		it->second.bottom = it->second.top + lsmarkheight;
-		FillRect(hdc, &it->second, GetStockBrush(DKGRAY_BRUSH));
+		it->second.rc.top = pos;
+		it->second.rc.bottom = it->second.rc.top + lsmarkheight;
+		//FillRect(hdc, &it->second.rc, GetStockBrush(DKGRAY_BRUSH));
+
+		rc = it->second.rc;
+		//lsdebugout(TEXT(">lsdrawMarks: pageno=%d\r\n"), it->second.pageno);
+		_stprintf(pt_message, TEXT("%d"), it->second.pageno);
+		TextOut(hdc, rc.left, rc.top, pt_message, _tcslen(pt_message));
 	}
 }
 void lsgotoPos(WindowInfo& win, int pos)
@@ -220,7 +226,7 @@ void lsonMouseLeftButtonDbClick(WindowInfo& win, int x, int y, WPARAM key)
 bool lsonMouseLeftButtonDown(WindowInfo& win, int x, int y, WPARAM key)
 {
 	//lsdebugout(TEXT(">lsonMouseLeftButtonUp: (x,y)=(%d,%d)\r\n"), x, y);
-	map<int, RECT>::iterator it = lsfindMark(x, y);
+	map<int,lsmarkinfo_t>::iterator it = lsfindMark(x, y);
 	if (it != lsmarkmap.end())
 	{
 		lsgotoPos(win, it->first);
@@ -235,7 +241,7 @@ bool lsonMouseLeftButtonUp(WindowInfo& win, int x, int y, WPARAM key)
 }
 bool lsonMouseRightButtonDown(WindowInfo& win, int x, int y, WPARAM key)
 {
-	map<int, RECT>::iterator it = lsfindMark(x, y);
+	map<int,lsmarkinfo_t>::iterator it = lsfindMark(x, y);
 	if (it != lsmarkmap.end())
 	{
 		lsmarkmap.erase(it);
@@ -255,7 +261,7 @@ void lsDrawScrollbar(WindowInfo& win, HDC &hdc, PAINTSTRUCT &ps)
 	lsbarrc = rc;
 	lsbarrc.left = 0;
 	lsbarrc.right = lsbarrc.left + lsbarwidth;
-	FillRect(hdc, &lsbarrc, GetStockBrush(GRAY_BRUSH));
+	//FillRect(hdc, &lsbarrc, GetStockBrush(GRAY_BRUSH));
 
 	// draw ls-bookmarks;
 	lsdrawMarks(hdc);
@@ -1372,6 +1378,9 @@ static LRESULT OnGesture(WindowInfo& win, UINT message, WPARAM wParam, LPARAM lP
 
 static LRESULT WndProcCanvasFixedPageUI(WindowInfo& win, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	// +ls@150307;
+	if (lswinfix == NULL)
+		lswinfix = &win;
     switch (msg) {
     case WM_PAINT:
         OnPaintDocument(win);
