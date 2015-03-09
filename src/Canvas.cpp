@@ -554,7 +554,7 @@ public:
 			fun = it->second;
 		return fun;
 	}
-	void addDoc(TCHAR *name)
+	LsFun * addDoc(TCHAR *name)
 	{
 		//if (mdocmarks.size() > 0)
 		{
@@ -562,14 +562,15 @@ public:
 			if (it != mdocmarks.end())
 			{
 				//lsdebugout(TEXT(">addDoc: already exist.\r\n"));
-				return;
+				return it->second;
 			}
 		}
 		LsFun * fun = new LsFun();
 		_tcscpy(fun->mfilename, name);// , _tcslen(name));
 		//lsdebugout(TEXT(">addDoc: mfilename=%s\r\n"), fun->mfilename);
 		mdocmarks.insert(pair<int, LsFun*>(mcount++, fun));
-		//lsdebugout(TEXT(">lsmarddoc: adddoc ok\r\n"));
+		lsdebugout(TEXT(">lsmarddoc: adddoc ok\r\n"));
+		return fun;
 	}
 	void delDoc(TCHAR *name)
 	{
@@ -578,6 +579,7 @@ public:
 		{
 			if (it->second)
 			{
+				lsdebugout(TEXT(">lsmarkDoc.delDoc, name=%s\r\n"), it->second->mfilename);
 				delete it->second;
 				it->second = NULL;
 			}
@@ -604,26 +606,40 @@ public:
 static LsMarkDoc g_lsmarkdoc;
 static LsMarkDoc *glsmarkdoc = &g_lsmarkdoc;
 static LsFun * glsdoc = NULL;
-void lsaddDoc(TCHAR *name)
-{
-	//lsdebugout(TEXT(">lsaddDoc: name=%s\r\n"), name);
-	glsmarkdoc->addDoc(name);
-}
-void lscloseDoc(TCHAR *name)
-{
-	glsdoc = NULL;
-	glsmarkdoc->delDoc(name);
-}
+
 void lsselectDoc(TCHAR *name)
 {
 	//lsdebugout(TEXT(">lsselectDoc: name=%s\r\n"), name);
 	LsFun * doc = glsmarkdoc->findDoc(name);
 	if (doc != NULL)
 	{
-		//lsdebugout(TEXT(">lsselectDoc: %s\r\n"), doc->mfilename);
+		lsdebugout(TEXT(">lsselectDoc: %s\r\n"), doc->mfilename);
 		glsdoc = doc;
 	}
 }
+void lsaddDoc(TCHAR *name)
+{
+	//lsdebugout(TEXT(">lsaddDoc: name=%s\r\n"), name);
+	glsmarkdoc->addDoc(name);
+	//lsselectDoc(name);
+}
+void lsupdateDoc(TCHAR *name)
+{
+	LsFun * doc = glsmarkdoc->addDoc(name);
+	if (glsdoc == NULL)
+		glsdoc = doc;
+	else if (_tcscmp(glsdoc->mfilename, name) != 0)
+	{
+		glsdoc = doc;
+	}
+}
+void lscloseDoc(TCHAR *name)
+{
+	lsdebugout(TEXT(">lscloseDoc: name=%s\r\n"), name);
+	glsdoc = NULL;
+	glsmarkdoc->delDoc(name);
+}
+
 //--------------------------------------------------------------------
 
 void UpdateDeltaPerLine()
@@ -1615,9 +1631,17 @@ static LRESULT OnGesture(WindowInfo& win, UINT message, WPARAM wParam, LPARAM lP
 static LRESULT WndProcCanvasFixedPageUI(WindowInfo& win, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	// +ls@150307;
-	if ( glsdoc)
+	//if (!glsdoc)
+	{
+		//lsselectDoc((WCHAR *)(win.tabs.Last()->GetTabTitle()));
+		//lsselectDoc((WCHAR *)(win.currentTab->GetTabTitle()));
+		lsupdateDoc((WCHAR *)(win.currentTab->GetTabTitle()));
+	}
+	if (glsdoc)
+	{
 		if (glsdoc->lswinfix == NULL)
 			glsdoc->lswinfix = &win;
+	}
     switch (msg) {
     case WM_PAINT:
         OnPaintDocument(win);

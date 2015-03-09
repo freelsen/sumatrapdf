@@ -731,7 +731,7 @@ void TabsOnLoadedDoc(WindowInfo *win)
     tcs.mask = TCIF_TEXT;
     tcs.pszText = (WCHAR *)tab->GetTabTitle();
 	//lsdebugout(TEXT(">TabsOnLoadDoc: title=%s\r\n"), tcs.pszText); // +ls@150309;
-	lsaddDoc(tcs.pszText);
+	//lsaddDoc(tcs.pszText);
 
     int index = (int)win->tabs.Count() - 1;
     if (-1 != TabCtrl_InsertItem(win->hwndTabBar, index, &tcs)) {
@@ -785,7 +785,7 @@ void TabsOnCloseDoc(WindowInfo *win)
 
     int current = TabCtrl_GetCurSel(win->hwndTabBar);
 	//lsdebugout(TEXT(">TabsOnCloseDoc: title=%s\r\n"), (WCHAR *)(win->tabs.At(current))->GetTabTitle()); // +ls@150309;
-	lscloseDoc((WCHAR *)(win->tabs.At(current))->GetTabTitle());
+	//lscloseDoc((WCHAR *)(win->tabs.At(current))->GetTabTitle());
 
     RemoveTab(win, current);
 
@@ -820,11 +820,11 @@ LRESULT TabsOnNotify(WindowInfo *win, LPARAM lparam, int tab1, int tab2)
         return FALSE;
 
     case TCN_SELCHANGE:
-        current = TabCtrl_GetCurSel(win->hwndTabBar);
-        LoadModelIntoTab(win, win->tabs.At(current));
+		current = TabCtrl_GetCurSel(win->hwndTabBar);
+		//lsselectDoc((WCHAR *)(win->tabs.At(current))->GetTabTitle());
+		LoadModelIntoTab(win, win->tabs.At(current));
 		//lsdebugout(TEXT(">TabsOnNotify: title=%s, carve-wnd=%x\r\n"), (WCHAR *)(win->tabs.At(current))->GetTabTitle(), win->hwndCanvas); // +ls@150309;
-		lsselectDoc((WCHAR *)(win->tabs.At(current))->GetTabTitle());
-
+		
         break;
 
     case T_CLOSING:
@@ -918,6 +918,7 @@ void TabsSelect(WindowInfo *win, int tabIndex)
         ntd.code = TCN_SELCHANGE;
         TabsOnNotify(win, (LPARAM)&ntd);
     }
+	//lsdebugout(TEXT(">TabsSelect: title=%s\r\n"), (WCHAR *)win->currentTab->GetTabTitle()); // +ls@150309;
 }
 
 // Selects the next (or previous) tab.
