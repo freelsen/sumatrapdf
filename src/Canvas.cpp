@@ -88,32 +88,26 @@ static void lsdebugout(TCHAR *msg, ...)
 typedef struct {
 	RECT rc;
 	int pageno;
+	int posmax;
 }lsmarkinfo_t;
 
 class LsFun{
-public:
-	void lstest(WindowInfo& win)
-	{
-		PAINTSTRUCT ps;
-		HDC hdc = BeginPaint(win.hwndCanvas, &ps);
-		TextOut(hdc, 0, 0, TEXT("hello ls"), 8);
-		EndPaint(win.hwndCanvas, &ps);
-	}
-
-	WindowInfo * lswinfix;
+private:
 	SCROLLINFO lssi;
-	int lsgetCurrentPos(WindowInfo &win)
+	void updateScrollinfo()
 	{
 		lssi.cbSize = sizeof(lssi);
 		lssi.fMask = SIF_ALL;
-		GetScrollInfo(win.hwndCanvas, SB_VERT, &lssi);
+		GetScrollInfo(lswinfix->hwndCanvas, SB_VERT, &lssi);
+	}
+	int lsgetCurrentPos(WindowInfo &win)
+	{
+		updateScrollinfo();
 		return lssi.nPos;
 	}
 	double lsgetPosPrecent(WindowInfo& win)
 	{
-		lssi.cbSize = sizeof(lssi);
-		lssi.fMask = SIF_ALL;
-		GetScrollInfo(win.hwndCanvas, SB_VERT, &lssi);
+		updateScrollinfo();
 		double f = (double)lssi.nPos / (double)lssi.nMax;
 		return f;
 	}
@@ -122,7 +116,25 @@ public:
 		return ((y > rc.top && y <rc.bottom)
 			&& (x>rc.left && x < rc.right));
 	}
-	//static vector<int> lsmarks;// = new vector<int>();
+
+	int lsgetPageNo()
+	{
+		DisplayModel *dm = lswinfix->ctrl->AsFixed();
+		return dm->CurrentPageNo();
+	}	
+	int lsfontwid;
+	int lsfonthei;
+	void lsgetFontSize(HDC &hdc)
+	{
+		TEXTMETRIC tm;
+		GetTextMetrics(hdc, &tm);
+		lsfontwid = tm.tmAveCharWidth;
+		lsfonthei = tm.tmHeight + tm.tmExternalLeading;
+	}
+
+	int lsmarknummax;
+	int lsmarknum;
+	int lsmarkheight;
 
 	map<int, lsmarkinfo_t> lsmarkmap;
 	map<int, lsmarkinfo_t>::iterator lsfindMark(int x, int y)
@@ -146,35 +158,24 @@ public:
 		return lsmarkmap.end();
 	}
 
-	int lsmarknummax;
-	int lsmarknum;
-	int lsmarkheight;
-
-	int lsfontwid;
-	int lsfonthei;
-
 	RECT lsbarrc;
 	int lsbarheight;
 	int lsbarwidth;
 	int lspos;
-	HPEN lsdotpen;
 
+	HPEN lsdotpen;
 	void lscreatDotPen()
 	{
 		lsdotpen = CreatePen(PS_DOT, 1, RGB(0, 0, 0));
 	}
 
-	void lsgetFontSize(HDC &hdc)
+	RECT genMarkRect(int pos)
 	{
-		TEXTMETRIC tm;
-		GetTextMetrics(hdc, &tm);
-		lsfontwid = tm.tmAveCharWidth;
-		lsfonthei = tm.tmHeight + tm.tmExternalLeading;
-	}
-	int lsgetPageNo()
-	{
-		DisplayModel *dm = lswinfix->ctrl->AsFixed();
-		return dm->CurrentPageNo();
+		RECT rc;
+		rc = lsbarrc;
+		rc.top = pos;
+		rc.bottom = rc.top + lsmarkheight;// 5;
+		return rc;
 	}
 	bool lsaddMark(int pos)
 	{
@@ -190,12 +191,9 @@ public:
 		else
 		{
 			lsmarkinfo_t mk;
-			mk.rc = lsbarrc;
-			//RECT rc = lsbarrc;
-			mk.rc.top = pos;
-			mk.rc.bottom = mk.rc.top + lsmarkheight;// 5;
-			//lsmarkrcs.push_back(rc);
 			mk.pageno = lsgetPageNo();
+			mk.rc = genMarkRect(pos);
+			mk.posmax = lssi.nMax;	// 150309;
 			//lsdebugout(TEXT(">lsaddmark: pageno=%d\r\n"), mk.pageno);
 			lsmarkmap.insert(pair<int, lsmarkinfo_t>(pos, mk));
 
@@ -214,6 +212,9 @@ public:
 		// check font size;
 		if (lsfontwid == 0)
 			lsgetFontSize(hdc);
+		// update;
+		//updateScrollinfo();
+		//int posmax = lssi.nMax;
 		// recal freespace;
 		int htotal = lsbarrc.bottom;
 		lsmarkheight = htotal / ((lsmarknum + 2) * 2);// (lsmarknummax * 2);
@@ -226,6 +227,7 @@ public:
 		int fontpos = (lsmarkheight - lsfonthei) / 2;
 		for (; it != lsmarkmap.end(); it++, pos += hmark)
 		{
+			
 			it->second.rc.top = pos;
 			it->second.rc.bottom = it->second.rc.top + lsmarkheight;
 			rc = it->second.rc;
@@ -249,89 +251,24 @@ public:
 			TextOut(hdc, rc.left, rc.top, pt_message, _tcslen(pt_message));
 		}
 	}
-	void lsgotoPos(WindowInfo& win, int pos)
-	{
-		int curpos = lsgetCurrentPos(win);
-		win.MoveDocBy(0, pos - curpos);
-	}
-	void lsonMouseLeftButtonDbClick(WindowInfo& win, int x, int y, WPARAM key)
-	{
-		// add bookmark;
-		int pos = lsgetCurrentPos(win);
-
-		if (lsaddMark(pos))
-		{
-			//lsdebugout(TEXT(">DbClick: add mark ok\r\n"));
-			::InvalidateRect(win.hwndCanvas, &lsbarrc, true);
-			::UpdateWindow(win.hwndCanvas);
-		}
-	}
-	bool lsonMouseLeftButtonDown(WindowInfo& win, int x, int y, WPARAM key)
-	{
-		//lsdebugout(TEXT(">lsonMouseLeftButtonDown: (x,y)=(%d,%d)\r\n"), x, y);
-		map<int, lsmarkinfo_t>::iterator it = lsfindMark(x, y);
-		if (it != lsmarkmap.end())
-		{
-			lsgotoPos(win, it->first);
-			return true;
-		}
-		else
-			return false;
-	}
 	void lsdelMark(map<int, lsmarkinfo_t>::iterator it)
 	{
 		lsmarkmap.erase(it);
 		::InvalidateRect(lswinfix->hwndCanvas, &lsbarrc, true);
 		::UpdateWindow(lswinfix->hwndCanvas);
 	}
-	bool lsonMouseLeftButtonUp(WindowInfo& win, int x, int y, WPARAM key)
+	void lsgotoPos(WindowInfo& win, int pos, int posmax)
 	{
-		//lsdebugout(TEXT(">lsonMouseLeftButtonUp: (x,y)=(%d,%d)\r\n"), x, y);
-		return false;
+		int curpos = lsgetCurrentPos(win);
+		//updateScrollinfo();
+		int curposmax = lssi.nMax;
+		if (posmax != curposmax)
+			pos = double(curposmax) / (double)posmax * (double)pos;
+		win.MoveDocBy(0, pos - curpos);
 	}
-	bool lsonMouseRightButtonDown(WindowInfo& win, int x, int y, WPARAM key)
-	{
-		//lsdebugout(TEXT(">lsonMouseRightButtonDown: (x,y)=(%d,%d)\r\n"), x, y);
-		map<int, lsmarkinfo_t>::iterator it = lsfindMark(x, y);
-		if (it != lsmarkmap.end())
-		{
-			lsdelMark(it);
-			//lsmarkmap.erase(it);
-			//::InvalidateRect(win.hwndCanvas, &lsbarrc, true);
-			//::UpdateWindow(win.hwndCanvas);
-			return true;
-		}
-		else
-			return false;
-	}
-	
-	map<int, lsmarkinfo_t>::iterator lsit;
-	POINT lsscreentoClient(int x, int y)
-	{
-		POINT p;
-		p.x = x; p.y = y;
-		ScreenToClient(lswinfix->hwndCanvas, &p);
-		return p;
-	}
-	bool lsonPanBegin(int x, int y)
-	{
-		POINT p = lsscreentoClient(x, y);
-		lsit = lsfindMark(p.x, p.y);
-		//if (lsit != lsmarkmap.end())
-		//	lsdebugout(TEXT(">lsonPanbegin: in.\r\n"));
 
-		return false;
-	}
-	bool lsonPanEnd(int x, int y)
-	{
-		POINT p = lsscreentoClient(x, y);
-		map<int, lsmarkinfo_t>::iterator it = lsfindMark(p.x, p.y);
-		if ((lsit != lsmarkmap.end()) && (lsit != it))
-		{
-			lsdelMark(lsit);
-		}
-		return false;
-	}
+
+	map<int, lsmarkinfo_t>::iterator lsit;
 	void lsdrawbar(HDC &hdc)
 	{
 		//FillRect(hdc, &lsbarrc, GetStockBrush(GRAY_BRUSH));
@@ -356,24 +293,31 @@ public:
 		//SelectObject(hdc, original);
 		lspos = pos.top;
 	}
-	void lsDrawScrollbar(WindowInfo& win, HDC &hdc, PAINTSTRUCT &ps)
+
+	bool lsdragms;
+	int lspritime;		// privous time;
+	int lsmintimegap;	// in millisecond;
+
+	bool lsdragdis;
+	int lsprix;			// privous mouse location;
+	int lspriy;
+	int lscalDistance(int x, int y)
 	{
-		// update client rect;
-		RECT rc = ps.rcPaint;
-		lsbarrc = rc;
-		lsbarrc.left = 0;
-		lsbarrc.right = lsbarrc.left + lsbarwidth;
+		if (lsdragdis)
+		{
+			lsdragdis = false;
+			lsprix = x;
+			lspriy = y;
+			return 0;
+		}
+		// cal location diff;
+		int dx = x - lsprix;
+		int dy = y - lspriy;
+		lsprix = x;
+		lspriy = y;
 
-		//TextOut(hdc, rc.right / 2, rc.bottom / 2, TEXT("hello ls"), 8);
-		// draw ls-scroll-bar;
-		// lsdrawbar(hdc);	
-
-		// draw ls-bookmarks;
-		lsdrawMarks(hdc);
-
-		lsdrawCurpos(win, hdc);
+		return dy;
 	}
-
 	int lsgetMillisecond()
 	{
 		//SYSTEMTIME st;
@@ -390,24 +334,6 @@ public:
 			+ ((LONGLONG)(ft.dwHighDateTime) << 32LL); // to nonosecond;
 		int ms = ll_now / 10000; // to millisecond;
 		return ms;
-	}
-	bool lsdragms;
-	int lspritime;		// privous time;
-	int lsmintimegap;	// in millisecond;
-
-	bool lsdragdis;
-	int lsprix;			// privous mouse location;
-	int lspriy;
-
-	void lsonDragStart()
-	{
-		lsdragms = true;
-		lsdragdis = true;
-	}
-	void lsonDragStop()
-	{
-		lsdragms = false;
-		lsdragdis = false;
 	}
 	int lscalMillisecond()
 	{
@@ -426,24 +352,119 @@ public:
 			lspritime = ms;
 		return ms;
 	}
-	int lscalDistance(int x, int y)
-	{
-		if (lsdragdis)
-		{
-			lsdragdis = false;
-			lsprix = x;
-			lspriy = y;
-			return 0;
-		}
-		// cal location diff;
-		int dx = x - lsprix;
-		int dy = y - lspriy;
-		lsprix = x;
-		lspriy = y;
 
-		return dy;
+public:
+	void lstest(WindowInfo& win)
+	{
+		PAINTSTRUCT ps;
+		HDC hdc = BeginPaint(win.hwndCanvas, &ps);
+		TextOut(hdc, 0, 0, TEXT("hello ls"), 8);
+		EndPaint(win.hwndCanvas, &ps);
 	}
 
+	WindowInfo * lswinfix;
+
+	POINT lsscreentoClient(int x, int y)
+	{
+		POINT p;
+		p.x = x; p.y = y;
+		ScreenToClient(lswinfix->hwndCanvas, &p);
+		return p;
+	}
+	void lsDrawScrollbar(WindowInfo& win, HDC &hdc, PAINTSTRUCT &ps)
+	{
+		// update client rect;
+		RECT rc = ps.rcPaint;
+		lsbarrc = rc;
+		lsbarrc.left = 0;
+		lsbarrc.right = lsbarrc.left + lsbarwidth;
+
+		//TextOut(hdc, rc.right / 2, rc.bottom / 2, TEXT("hello ls"), 8);
+		// draw ls-scroll-bar;
+		// lsdrawbar(hdc);	
+
+		// draw ls-bookmarks;
+		lsdrawMarks(hdc);
+
+		lsdrawCurpos(win, hdc);
+	}
+	
+	void lsonMouseLeftButtonDbClick(WindowInfo& win, int x, int y, WPARAM key)
+	{
+		// add bookmark;
+		int pos = lsgetCurrentPos(win);
+		
+		if (lsaddMark(pos))
+		{
+			//lsdebugout(TEXT(">DbClick: add mark ok\r\n"));
+			::InvalidateRect(win.hwndCanvas, &lsbarrc, true);
+			::UpdateWindow(win.hwndCanvas);
+		}
+	}
+	bool lsonMouseLeftButtonDown(WindowInfo& win, int x, int y, WPARAM key)
+	{
+		//lsdebugout(TEXT(">lsonMouseLeftButtonDown: (x,y)=(%d,%d)\r\n"), x, y);
+		map<int, lsmarkinfo_t>::iterator it = lsfindMark(x, y);
+		if (it != lsmarkmap.end())
+		{
+			
+			lsgotoPos(win, it->first, it->second.posmax);
+			return true;
+		}
+		else
+			return false;
+	}
+	bool lsonMouseLeftButtonUp(WindowInfo& win, int x, int y, WPARAM key)
+	{
+		//lsdebugout(TEXT(">lsonMouseLeftButtonUp: (x,y)=(%d,%d)\r\n"), x, y);
+		return false;
+	}
+	bool lsonMouseRightButtonDown(WindowInfo& win, int x, int y, WPARAM key)
+	{
+		//lsdebugout(TEXT(">lsonMouseRightButtonDown: (x,y)=(%d,%d)\r\n"), x, y);
+		map<int, lsmarkinfo_t>::iterator it = lsfindMark(x, y);
+		if (it != lsmarkmap.end())
+		{
+			lsdelMark(it);
+			//lsmarkmap.erase(it);
+			//::InvalidateRect(win.hwndCanvas, &lsbarrc, true);
+			//::UpdateWindow(win.hwndCanvas);
+			return true;
+		}
+		else
+			return false;
+	}
+	
+	bool lsonPanBegin(int x, int y)
+	{
+		POINT p = lsscreentoClient(x, y);
+		lsit = lsfindMark(p.x, p.y);
+		//if (lsit != lsmarkmap.end())
+		//	lsdebugout(TEXT(">lsonPanbegin: in.\r\n"));
+
+		return false;
+	}
+	bool lsonPanEnd(int x, int y)
+	{
+		POINT p = lsscreentoClient(x, y);
+		map<int, lsmarkinfo_t>::iterator it = lsfindMark(p.x, p.y);
+		if ((lsit != lsmarkmap.end()) && (lsit != it))
+		{
+			lsdelMark(lsit);
+		}
+		return false;
+	}
+	
+	void lsonDragStart()
+	{
+		lsdragms = true;
+		lsdragdis = true;
+	}
+	void lsonDragStop()
+	{
+		lsdragms = false;
+		lsdragdis = false;
+	}
 	bool lsonDragging(WindowInfo &win, int x, int y)
 	{
 		int d = lscalMillisecond();
