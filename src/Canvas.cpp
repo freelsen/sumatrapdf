@@ -60,7 +60,7 @@ static bool gWheelMsgRedirect = false;
 //+ls@150206;
 
 static TCHAR pt_message[2048];
-static void lsdebugout(TCHAR *msg, ...)
+void lsdebugout(TCHAR *msg, ...)
 {
 //#ifdef _DEBUG
 	//if (!check()) return;
@@ -362,6 +362,7 @@ public:
 		EndPaint(win.hwndCanvas, &ps);
 	}
 
+	TCHAR mfilename[1024];
 	WindowInfo * lswinfix;
 
 	POINT lsscreentoClient(int x, int y)
@@ -525,9 +526,105 @@ public:
 		if (lsdotpen){ DeleteObject(lsdotpen); }
 	}
 };
-static LsFun g_lsfun;
-static LsFun * glsfun = &g_lsfun;
 
+class LsMarkDoc
+{
+private:
+	int mcount;
+	map<int, LsFun*> mdocmarks;
+
+public:
+	map<int, LsFun*>::iterator find(TCHAR * name)
+	{
+		map<int, LsFun*>::iterator it;
+		for (it = mdocmarks.begin(); it != mdocmarks.end(); it++)
+		{
+			if (_tcscmp(name, it->second->mfilename) == 0)
+			{
+				break;
+			}
+		}
+		return it;
+	}
+	LsFun* findDoc(TCHAR *name)
+	{
+		LsFun * fun = NULL;
+		map<int, LsFun*>::iterator it = find(name);
+		if (it != mdocmarks.end())
+			fun = it->second;
+		return fun;
+	}
+	void addDoc(TCHAR *name)
+	{
+		//if (mdocmarks.size() > 0)
+		{
+			map<int, LsFun*>::iterator it = find(name);
+			if (it != mdocmarks.end())
+			{
+				//lsdebugout(TEXT(">addDoc: already exist.\r\n"));
+				return;
+			}
+		}
+		LsFun * fun = new LsFun();
+		_tcscpy(fun->mfilename, name);// , _tcslen(name));
+		//lsdebugout(TEXT(">addDoc: mfilename=%s\r\n"), fun->mfilename);
+		mdocmarks.insert(pair<int, LsFun*>(mcount++, fun));
+		//lsdebugout(TEXT(">lsmarddoc: adddoc ok\r\n"));
+	}
+	void delDoc(TCHAR *name)
+	{
+		map<int, LsFun*>::iterator it = find(name);
+		if (it != mdocmarks.end())
+		{
+			if (it->second)
+			{
+				delete it->second;
+				it->second = NULL;
+			}
+			mdocmarks.erase(it);
+		}
+	}
+	LsMarkDoc(){
+		mcount = 0;
+	}
+	~LsMarkDoc(){
+		map<int, LsFun*>::iterator it;
+		for (it = mdocmarks.begin(); it != mdocmarks.end(); it++)
+		{
+			if (it->second)
+			{
+				delete it->second;
+				it->second = NULL;
+			}
+		}
+		mdocmarks.clear();
+	}
+};
+
+static LsMarkDoc g_lsmarkdoc;
+static LsMarkDoc *glsmarkdoc = &g_lsmarkdoc;
+static LsFun * glsdoc = NULL;
+void lsaddDoc(TCHAR *name)
+{
+	//lsdebugout(TEXT(">lsaddDoc: name=%s\r\n"), name);
+	glsmarkdoc->addDoc(name);
+}
+void lscloseDoc(TCHAR *name)
+{
+	glsdoc = NULL;
+	glsmarkdoc->delDoc(name);
+}
+void lsselectDoc(TCHAR *name)
+{
+	//lsdebugout(TEXT(">lsselectDoc: name=%s\r\n"), name);
+	LsFun * doc = glsmarkdoc->findDoc(name);
+	if (doc != NULL)
+	{
+		//lsdebugout(TEXT(">lsselectDoc: %s\r\n"), doc->mfilename);
+		glsdoc = doc;
+	}
+}
+//--------------------------------------------------------------------
 
 void UpdateDeltaPerLine()
 {
@@ -623,12 +720,14 @@ static void OnDraggingStart(WindowInfo& win, int x, int y, bool right=false)
     if (GetCursor())
         SetCursor(gCursorDrag);
 	
-	glsfun->lsonDragStart();//+ls@150206;
+	if (glsdoc)
+		glsdoc->lsonDragStart();//+ls@150206;
 }
 
 static void OnDraggingStop(WindowInfo& win, int x, int y, bool aborted)
 {
-	glsfun->lsonDragStop();	//+ls@150306;
+	if (glsdoc)
+		glsdoc->lsonDragStop();	//+ls@150306;
 
     if (GetCapture() != win.hwndCanvas)
         return;
@@ -691,7 +790,8 @@ static void OnMouseMove(WindowInfo& win, int x, int y, WPARAM flags)
         break;
     case MA_DRAGGING:
     case MA_DRAGGING_RIGHT:
-		glsfun->lsonDragging(win, x, y);
+		if (glsdoc)
+			glsdoc->lsonDragging(win, x, y);
 		//lsdebugout(TEXT(">onMouseMove: MA_dragging, dx=%d,dy=%d\r\n"),
 		//	win.dragPrevPos.x - x, win.dragPrevPos.y - y);
 		//win.MoveDocBy(win.dragPrevPos.x - x, win.dragPrevPos.y - y);
@@ -724,10 +824,11 @@ static void OnMouseLeftButtonDown(WindowInfo& win, int x, int y, WPARAM key)
 
     SetFocus(win.hwndFrame);
 
-	if (glsfun->lsonMouseLeftButtonDown(win, x, y, key)) // +ls@150307;
-	{
-		return;
-	}
+	if (glsdoc)
+		if (glsdoc->lsonMouseLeftButtonDown(win, x, y, key)) // +ls@150307;
+		{
+			return;
+		}
 
     AssertCrash(!win.linkOnLastButtonDown);
     DisplayModel *dm = win.AsFixed();
@@ -760,7 +861,8 @@ static void OnMouseLeftButtonUp(WindowInfo& win, int x, int y, WPARAM key)
 {
     AssertCrash(win.AsFixed());
 	//+ls
-	glsfun->lsonMouseLeftButtonUp(win, x, y, key);
+	if (glsdoc)
+		glsdoc->lsonMouseLeftButtonUp(win, x, y, key);
 
     if (MA_IDLE == win.mouseAction || MA_DRAGGING_RIGHT == win.mouseAction)
         return;
@@ -831,7 +933,8 @@ static void OnMouseLeftButtonDblClk(WindowInfo& win, int x, int y, WPARAM key)
         return;
     }
 
-	glsfun->lsonMouseLeftButtonDbClick(win, x, y, key); // +ls@150307;
+	if (glsdoc)
+		glsdoc->lsonMouseLeftButtonDbClick(win, x, y, key); // +ls@150307;
 
     bool dontSelect = false;
     if (gGlobalPrefs->enableTeXEnhancements && !(key & ~MK_LBUTTON))
@@ -899,10 +1002,11 @@ static void OnMouseRightButtonDown(WindowInfo& win, int x, int y, WPARAM key)
 
     SetFocus(win.hwndFrame);
 
-	if (glsfun->lsonMouseRightButtonDown(win, x, y, key))
-	{
-		return;
-	}
+	if (glsdoc)
+		if (glsdoc->lsonMouseRightButtonDown(win, x, y, key))
+		{
+			return;
+		}
 
     win.dragStartPending = true;
     win.dragStart = PointI(x, y);
@@ -1207,7 +1311,8 @@ static void OnPaintDocument(WindowInfo& win)
     }
 
 	//+ls@150306;
-	glsfun->lsDrawScrollbar(win, hdc, ps);
+	if (glsdoc)
+		glsdoc->lsDrawScrollbar(win, hdc, ps);
 
     EndPaint(win.hwndCanvas, &ps);
     if (gShowFrameRate) {
@@ -1418,8 +1523,11 @@ static LRESULT OnGesture(WindowInfo& win, UINT message, WPARAM wParam, LPARAM lP
 			
             if (gi.dwFlags == GF_BEGIN) {
 				//lsdebugout(TEXT(">onGesture: GF_begin@(x,y)=(%d,%d).\r\n"), gi.ptsLocation.x, gi.ptsLocation.y);
-				if (!glsfun->lsonPanBegin(gi.ptsLocation.x, gi.ptsLocation.y))
-					glsfun->lsonDragStart();
+				if (glsdoc)
+				{
+					if (!glsdoc->lsonPanBegin(gi.ptsLocation.x, gi.ptsLocation.y))
+						glsdoc->lsonDragStart();
+				}
                 win.touchState.panStarted = true;
                 win.touchState.panPos = gi.ptsLocation;
                 win.touchState.panScrollOrigX = GetScrollPos(win.hwndCanvas, SB_HORZ);
@@ -1427,8 +1535,11 @@ static LRESULT OnGesture(WindowInfo& win, UINT message, WPARAM wParam, LPARAM lP
 			else if (gi.dwFlags == GF_END)
 			{
 				//lsdebugout(TEXT(">onGesture: GF_end@(x,y)=(%d,%d).\r\n"), gi.ptsLocation.x, gi.ptsLocation.y);
-				glsfun->lsonPanEnd(gi.ptsLocation.x, gi.ptsLocation.y);
-				glsfun->lsonDragStop();
+				if (glsdoc)
+				{
+					glsdoc->lsonPanEnd(gi.ptsLocation.x, gi.ptsLocation.y);
+					glsdoc->lsonDragStop();
+				}
 			}
             else if (win.touchState.panStarted) {
                 int deltaX = win.touchState.panPos.x - gi.ptsLocation.x;
@@ -1451,9 +1562,13 @@ static LRESULT OnGesture(WindowInfo& win, UINT message, WPARAM wParam, LPARAM lP
                 }
                 else if (win.AsFixed()) {
                     // Pan/Scroll
-					POINT p = glsfun->lsscreentoClient(gi.ptsLocation.x, gi.ptsLocation.y);
-					glsfun->lsonDragging(win, p.x, p.y);
-                    //win.MoveDocBy(deltaX, deltaY);
+					if (glsdoc)
+					{
+						POINT p = glsdoc->lsscreentoClient(gi.ptsLocation.x, gi.ptsLocation.y);
+						glsdoc->lsonDragging(win, p.x, p.y);
+					}
+					else
+						win.MoveDocBy(deltaX, deltaY);
                 }
             }
             break;
@@ -1500,8 +1615,9 @@ static LRESULT OnGesture(WindowInfo& win, UINT message, WPARAM wParam, LPARAM lP
 static LRESULT WndProcCanvasFixedPageUI(WindowInfo& win, HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	// +ls@150307;
-	if (glsfun->lswinfix == NULL)
-		glsfun->lswinfix = &win;
+	if ( glsdoc)
+		if (glsdoc->lswinfix == NULL)
+			glsdoc->lswinfix = &win;
     switch (msg) {
     case WM_PAINT:
         OnPaintDocument(win);
