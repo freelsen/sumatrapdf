@@ -352,7 +352,7 @@ private:
 			lspritime = ms;
 		return ms;
 	}
-
+	RECT mdragrc;	//+ls@150315;
 public:
 	void lstest(WindowInfo& win)
 	{
@@ -361,7 +361,7 @@ public:
 		TextOut(hdc, 0, 0, TEXT("hello ls"), 8);
 		EndPaint(win.hwndCanvas, &ps);
 	}
-
+	
 	TCHAR mfilename[1024];
 	WindowInfo * lswinfix;
 
@@ -379,6 +379,9 @@ public:
 		lsbarrc = rc;
 		lsbarrc.left = 0;
 		lsbarrc.right = lsbarrc.left + lsbarwidth;
+		// update drag area;
+		mdragrc = ps.rcPaint;
+		mdragrc.right /= 2;
 
 		//TextOut(hdc, rc.right / 2, rc.bottom / 2, TEXT("hello ls"), 8);
 		// draw ls-scroll-bar;
@@ -456,18 +459,33 @@ public:
 		return false;
 	}
 	
-	void lsonDragStart()
+	bool isInDragArea(int x, int y)
 	{
+		return this->lsisinRect(mdragrc, x, y);
+	}
+	bool misfastdrag = false;
+	bool isFastDrag() {
+		return misfastdrag;
+	}
+	bool lsonDragStart(int x, int y)
+	{			
 		lsdragms = true;
 		lsdragdis = true;
+
+		misfastdrag = isInDragArea(x, y);
+		return misfastdrag;
 	}
 	void lsonDragStop()
 	{
+		misfastdrag = false;
 		lsdragms = false;
 		lsdragdis = false;
 	}
 	bool lsonDragging(WindowInfo &win, int x, int y)
 	{
+		if (!isFastDrag())
+			return false;
+
 		int d = lscalMillisecond();
 		int dy = 0;
 		if (d == -1)		//set initial value;
@@ -487,11 +505,13 @@ public:
 		//else
 		//dis = -pow(base, -dy);
 		if (dy >= 0)
-			dis = pow(dy, base);
+			dis = -pow(dy, base);
 		else
-			dis = -pow(-dy, base);
+			dis = pow(-dy, base);
 		//lsdebugout(TEXT(">lsonDragging: move=%d\r\n"), dis);
 		win.MoveDocBy(0, dis);
+
+		return true;
 	}
 	// --------------------------------------------------------------------------
 
@@ -737,7 +757,7 @@ static void OnDraggingStart(WindowInfo& win, int x, int y, bool right=false)
         SetCursor(gCursorDrag);
 	
 	if (glsdoc)
-		glsdoc->lsonDragStart();//+ls@150206;
+		glsdoc->lsonDragStart(x,y);//+ls@150206;
 }
 
 static void OnDraggingStop(WindowInfo& win, int x, int y, bool aborted)
@@ -806,11 +826,15 @@ static void OnMouseMove(WindowInfo& win, int x, int y, WPARAM flags)
         break;
     case MA_DRAGGING:
     case MA_DRAGGING_RIGHT:
+		bool isfastdrag = false;
 		if (glsdoc)
-			glsdoc->lsonDragging(win, x, y);
+		{
+			isfastdrag = glsdoc->lsonDragging(win, x, y);
+		}
 		//lsdebugout(TEXT(">onMouseMove: MA_dragging, dx=%d,dy=%d\r\n"),
 		//	win.dragPrevPos.x - x, win.dragPrevPos.y - y);
-		//win.MoveDocBy(win.dragPrevPos.x - x, win.dragPrevPos.y - y);
+		if (!isfastdrag)
+			win.MoveDocBy(win.dragPrevPos.x - x, win.dragPrevPos.y - y);
         break;
     }
     // needed also for detecting cursor movement in presentation mode
@@ -1542,7 +1566,10 @@ static LRESULT OnGesture(WindowInfo& win, UINT message, WPARAM wParam, LPARAM lP
 				if (glsdoc)
 				{
 					if (!glsdoc->lsonPanBegin(gi.ptsLocation.x, gi.ptsLocation.y))
-						glsdoc->lsonDragStart();
+					{
+						POINT p = glsdoc->lsscreentoClient(gi.ptsLocation.x, gi.ptsLocation.y);
+						glsdoc->lsonDragStart(p.x, p.y);
+					}
 				}
                 win.touchState.panStarted = true;
                 win.touchState.panPos = gi.ptsLocation;
@@ -1553,7 +1580,8 @@ static LRESULT OnGesture(WindowInfo& win, UINT message, WPARAM wParam, LPARAM lP
 				//lsdebugout(TEXT(">onGesture: GF_end@(x,y)=(%d,%d).\r\n"), gi.ptsLocation.x, gi.ptsLocation.y);
 				if (glsdoc)
 				{
-					glsdoc->lsonPanEnd(gi.ptsLocation.x, gi.ptsLocation.y);
+					POINT p = glsdoc->lsscreentoClient(gi.ptsLocation.x, gi.ptsLocation.y);
+					glsdoc->lsonPanEnd(p.x, p.y);// gi.ptsLocation.x, gi.ptsLocation.y);
 					glsdoc->lsonDragStop();
 				}
 			}
@@ -1578,12 +1606,13 @@ static LRESULT OnGesture(WindowInfo& win, UINT message, WPARAM wParam, LPARAM lP
                 }
                 else if (win.AsFixed()) {
                     // Pan/Scroll
+					bool isfastdrag = false;
 					if (glsdoc)
 					{
 						POINT p = glsdoc->lsscreentoClient(gi.ptsLocation.x, gi.ptsLocation.y);
-						glsdoc->lsonDragging(win, p.x, p.y);
+						isfastdrag = glsdoc->lsonDragging(win, p.x, p.y);
 					}
-					else
+					if (!isfastdrag)
 						win.MoveDocBy(deltaX, deltaY);
                 }
             }
