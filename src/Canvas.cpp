@@ -204,6 +204,15 @@ private:
 			return true;
 		}
 	}
+	int calStartPos(int num, int nummin, int h)
+	{
+		if (num >= nummin)
+			return h;
+		else
+		{
+			return h + (nummin - num)/2*h;
+		}
+	}
 	void lsdrawMarks(HDC &hdc)
 	{
 		int num = lsmarkmap.size();
@@ -222,7 +231,7 @@ private:
 
 		//
 		map<int, lsmarkinfo_t>::iterator it = lsmarkmap.begin();
-		int pos = hmark;
+		int pos = calStartPos(lsmarkmap.size(), lsmarknum, hmark);
 		RECT rc;
 		int fontpos = (lsmarkheight - lsfonthei) / 2;
 		for (; it != lsmarkmap.end(); it++, pos += hmark)
