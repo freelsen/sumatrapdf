@@ -117,6 +117,21 @@ private:
 	int lsmarknummax;
 	int lsmarknum;
 	int lsmarkheight;
+	HPEN lsdotpen;
+	void lscreatDotPen()
+	{
+		lsdotpen = CreatePen(PS_DOT, 1, RGB(0, 0, 0));
+	}
+	void updateHeight(HDC &hdc)
+	{
+		// check font size;
+		if (lsfontwid == 0)
+			lsgetFontSize(hdc);
+
+		// recal freespace;
+		int htotal = lsbarrc.bottom;
+		lsmarkheight = htotal / ((lsmarknum + 2) * 2);// (lsmarknummax * 2);		
+	}
 
 	map<int, lsmarkinfo_t> lsmarkmap;
 	map<int, lsmarkinfo_t>::iterator lsfindMark(int x, int y)
@@ -149,12 +164,9 @@ private:
 	int lsbarheight;
 	int lsbarwidth;
 	int lspos;
-	HPEN lsdotpen;
-	void lscreatDotPen()
-	{
-		lsdotpen = CreatePen(PS_DOT, 1, RGB(0, 0, 0));
-	}
-
+	RECT mtoprc;
+	RECT mbottomrc;
+	
 	RECT genMarkRect(int pos)
 	{
 		RECT rc;
@@ -173,35 +185,29 @@ private:
 		}
 	}
 	
-	void lsdrawbar(HDC &hdc, PAINTSTRUCT &ps)
+	void drawBar(HDC &hdc, PAINTSTRUCT &ps)
 	{
 		// update client rect;
 		RECT rc = ps.rcPaint;
 		lsbarrc = rc;
 		lsbarrc.left = 0;
-		lsbarrc.right = lsbarrc.left + lsbarwidth;
-		
-		//TextOut(hdc, rc.right / 2, rc.bottom / 2, TEXT("hello ls"), 8);
-		// draw ls-scroll-bar;
+		lsbarrc.right = lsbarrc.left + lsbarwidth;		
 		//FillRect(hdc, &lsbarrc, GetStockBrush(GRAY_BRUSH));
-	}
+		
+		mtoprc = lsbarrc;
+		mtoprc.bottom = lsmarkheight;
+
+		mbottomrc = lsbarrc;
+		mbottomrc.top = mbottomrc.bottom - lsmarkheight;
+	}	
 	void lsdrawMarks(HDC &hdc)
 	{
 		int num = lsmarkmap.size();
 		if (num <= 0)
 			return;
-		// check font size;
-		if (lsfontwid == 0)
-			lsgetFontSize(hdc);
-		// update;
-		//updateScrollinfo();
-		//int posmax = lssi.nMax;
-		// recal freespace;
-		int htotal = lsbarrc.bottom;
-		lsmarkheight = htotal / ((lsmarknum + 2) * 2);// (lsmarknummax * 2);
-		int hmark = lsmarkheight * 2;
-
+		
 		//
+		int hmark = lsmarkheight * 2;
 		map<int, lsmarkinfo_t>::iterator it = lsmarkmap.begin();
 		int pos = calStartPos(lsmarkmap.size(), lsmarknum, hmark);
 		RECT rc;
@@ -253,6 +259,10 @@ public:
 	}
 
 	RECT * getBarrc() { return &lsbarrc;  }
+	bool isInToprc(int x, int y){ return LsCom::lsisinRect(mtoprc, x, y); }
+	bool isInBottomrc(int x, int y) {
+		return LsCom::lsisinRect(mbottomrc, x, y);
+	}
 	lsmarkinfo_t * findMarkinfo(int x, int y)
 	{
 		map<int, lsmarkinfo_t>::iterator it = lsfindMark(x, y);
@@ -303,7 +313,8 @@ public:
 	}
 	void drawMarks(HDC &hdc, PAINTSTRUCT &ps)
 	{
-		lsdrawbar(hdc,ps);	
+		updateHeight(hdc);
+		drawBar(hdc, ps);
 		// draw ls-bookmarks;
 		lsdrawMarks(hdc);
 		//lsdrawCurpos(win, hdc);
@@ -339,7 +350,17 @@ private:
 	int lsprix;			// privous mouse location;
 	int lspriy;
 	
+	RECT mleftrc;
+	RECT mrightrc;
+	int mpos = 1;
 	RECT mdragrc;	//+ls@150315;
+	void updateDragRc()
+	{
+		if (mpos == 0)
+			mdragrc = mleftrc;
+		else
+			mdragrc = mrightrc;
+	}
 
 	bool misfastdrag = false;
 
@@ -406,6 +427,11 @@ public:
 		lspriy = 0;
 	}
 
+	void changeDragArea()
+	{
+		mpos = (mpos == 0) ? 1 : 0;
+		updateDragRc();
+	}
 	bool isInDragArea(int x, int y)
 	{
 		return LsCom::lsisinRect(mdragrc, x, y);
@@ -413,6 +439,7 @@ public:
 	bool isFastDrag() {
 		return misfastdrag;
 	}
+	
 	bool lsonDragStart(int x, int y)
 	{
 		lsdragms = true;
@@ -459,11 +486,15 @@ public:
 
 		return true;
 	}
+	
 	void onDraw(PAINTSTRUCT &ps)
 	{
 		// update drag area;
-		mdragrc = ps.rcPaint;
-		mdragrc.right /= 2;
+		mleftrc = ps.rcPaint;
+		mleftrc.right /= 2;
+		mrightrc = ps.rcPaint;
+		mrightrc.left = mrightrc.right / 2;
+		updateDragRc();
 	}
 };
 class LsFun{
@@ -548,6 +579,10 @@ public:
 	bool lsonMouseLeftButtonUp(WindowInfo& win, int x, int y, WPARAM key)
 	{
 		//lsdebugout(TEXT(">lsonMouseLeftButtonUp: (x,y)=(%d,%d)\r\n"), x, y);
+		if (mfastmark.isInToprc(x, y))
+		{
+			mfastdrag.changeDragArea();
+		}
 		return false;
 	}
 	void lsonMouseLeftButtonDbClick(WindowInfo& win, int x, int y, WPARAM key)
