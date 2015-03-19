@@ -103,24 +103,7 @@ public:
 };
 
 class LsFastMark{
-public: 
-	LsFastMark(){
-		lsmarknummax = 10;
-		lsmarknum = 10;
-		lsmarkheight = 30;
-
-		lsfontwid = 0;
-		lsfonthei = 0;
-
-		lsbarheight = 8;
-		lsbarwidth = 50;
-		lspos = 0;
-		lsdotpen = NULL;
-	}
-	~LsFastMark(){
-		if (lsdotpen)
-			DeleteObject(lsdotpen);
-	}
+private:
 	int lsfontwid;
 	int lsfonthei;
 	void lsgetFontSize(HDC &hdc)
@@ -156,28 +139,16 @@ public:
 		}
 		return lsmarkmap.end();
 	}
-	lsmarkinfo_t * findMarkinfo(int x, int y)
+	void lsdelMark(map<int, lsmarkinfo_t>::iterator it)
 	{
-		map<int, lsmarkinfo_t>::iterator it = lsfindMark(x, y);
-		if (it != lsmarkmap.end())
-			return &it->second;
-		else
-			return NULL;
+		lsmarkmap.erase(it);
+		
 	}
-	lsmarkinfo_t * findMarkinfo(int pos)
-	{
-		map<int, lsmarkinfo_t>::iterator it = lsfindMark(pos);
-		if (it != lsmarkmap.end())
-			return &it->second;
-		else
-			return NULL;
-	}
+	
 	RECT lsbarrc;
 	int lsbarheight;
 	int lsbarwidth;
 	int lspos;
-	RECT * getBarrc() { return &lsbarrc;  }
-
 	HPEN lsdotpen;
 	void lscreatDotPen()
 	{
@@ -192,34 +163,6 @@ public:
 		rc.bottom = rc.top + lsmarkheight;// 5;
 		return rc;
 	}
-	bool lsaddMark(int pos,int pageno, int posmax)
-	{
-		//if (lsmarkmap.size() >= lsmarknummax - 1)
-		//{
-		//	lsdebugout(TEXT(">ladddMark: too much marks, add failed.\r\n"));
-		//	return false;
-		//}
-		//
-		map<int, lsmarkinfo_t>::iterator it = lsfindMark(pos);
-		if (it != lsmarkmap.end())
-			return false;
-		else
-		{
-			lsmarkinfo_t mk;
-			mk.pos = pos;
-			mk.pageno = pageno;// lsgetPageNo();
-			mk.rc = genMarkRect(pos);
-			mk.posmax = posmax;// lssi.nMax;	// 150309;
-			//lsdebugout(TEXT(">lsaddmark: pageno=%d\r\n"), mk.pageno);
-			lsmarkmap.insert(pair<int, lsmarkinfo_t>(pos, mk));
-
-			int num = lsmarkmap.size();
-			if (num > lsmarknum)
-				lsmarknum = num;
-
-			return true;
-		}
-	}
 	int calStartPos(int num, int nummin, int h)
 	{
 		if (num >= nummin)
@@ -228,6 +171,19 @@ public:
 		{
 			return h + (nummin - num) / 2 * h;
 		}
+	}
+	
+	void lsdrawbar(HDC &hdc, PAINTSTRUCT &ps)
+	{
+		// update client rect;
+		RECT rc = ps.rcPaint;
+		lsbarrc = rc;
+		lsbarrc.left = 0;
+		lsbarrc.right = lsbarrc.left + lsbarwidth;
+		
+		//TextOut(hdc, rc.right / 2, rc.bottom / 2, TEXT("hello ls"), 8);
+		// draw ls-scroll-bar;
+		//FillRect(hdc, &lsbarrc, GetStockBrush(GRAY_BRUSH));
 	}
 	void lsdrawMarks(HDC &hdc)
 	{
@@ -276,19 +232,81 @@ public:
 			TextOut(hdc, rc.left, rc.top, pt_message, _tcslen(pt_message));
 		}
 	}
-	void lsdelMark(map<int, lsmarkinfo_t>::iterator it)
+
+public: 
+	LsFastMark(){
+		lsmarknummax = 10;
+		lsmarknum = 10;
+		lsmarkheight = 30;
+
+		lsfontwid = 0;
+		lsfonthei = 0;
+
+		lsbarheight = 8;
+		lsbarwidth = 50;
+		lspos = 0;
+		lsdotpen = NULL;
+	}
+	~LsFastMark(){
+		if (lsdotpen)
+			DeleteObject(lsdotpen);
+	}
+
+	RECT * getBarrc() { return &lsbarrc;  }
+	lsmarkinfo_t * findMarkinfo(int x, int y)
 	{
-		lsmarkmap.erase(it);
-		
+		map<int, lsmarkinfo_t>::iterator it = lsfindMark(x, y);
+		if (it != lsmarkmap.end())
+			return &it->second;
+		else
+			return NULL;
+	}
+	lsmarkinfo_t * findMarkinfo(int pos)
+	{
+		map<int, lsmarkinfo_t>::iterator it = lsfindMark(pos);
+		if (it != lsmarkmap.end())
+			return &it->second;
+		else
+			return NULL;
+	}
+	bool lsaddMark(int pos,int pageno, int posmax)
+	{
+		//if (lsmarkmap.size() >= lsmarknummax - 1)
+		//{
+		//	lsdebugout(TEXT(">ladddMark: too much marks, add failed.\r\n"));
+		//	return false;
+		//}
+		//
+		map<int, lsmarkinfo_t>::iterator it = lsfindMark(pos);
+		if (it != lsmarkmap.end())
+			return false;
+		else
+		{
+			lsmarkinfo_t mk;
+			mk.pos = pos;
+			mk.pageno = pageno;// lsgetPageNo();
+			mk.rc = genMarkRect(pos);
+			mk.posmax = posmax;// lssi.nMax;	// 150309;
+			//lsdebugout(TEXT(">lsaddmark: pageno=%d\r\n"), mk.pageno);
+			lsmarkmap.insert(pair<int, lsmarkinfo_t>(pos, mk));
+
+			int num = lsmarkmap.size();
+			if (num > lsmarknum)
+				lsmarknum = num;
+
+			return true;
+		}
 	}
 	void lsdelMark(int key)
 	{
 		lsmarkmap.erase(key);
 	}
-
-	void lsdrawbar(HDC &hdc)
+	void drawMarks(HDC &hdc, PAINTSTRUCT &ps)
 	{
-		//FillRect(hdc, &lsbarrc, GetStockBrush(GRAY_BRUSH));
+		lsdrawbar(hdc,ps);	
+		// draw ls-bookmarks;
+		lsdrawMarks(hdc);
+		//lsdrawCurpos(win, hdc);
 	}
 	void lsdrawCurpos(HDC &hdc, double posPrecent)
 	{
@@ -310,23 +328,6 @@ public:
 		//SelectObject(hdc, original);
 		lspos = pos.top;
 	}
-	void drawMarks(HDC &hdc, PAINTSTRUCT &ps)
-	{
-		// update client rect;
-		RECT rc = ps.rcPaint;
-		lsbarrc = rc;
-		lsbarrc.left = 0;
-		lsbarrc.right = lsbarrc.left + lsbarwidth;
-		
-		//TextOut(hdc, rc.right / 2, rc.bottom / 2, TEXT("hello ls"), 8);
-		// draw ls-scroll-bar;
-		// lsdrawbar(hdc);	
-
-		// draw ls-bookmarks;
-		lsdrawMarks(hdc);
-
-		//lsdrawCurpos(win, hdc);
-	}
 };
 class LsFastDrag{
 private:
@@ -341,17 +342,6 @@ private:
 	RECT mdragrc;	//+ls@150315;
 
 	bool misfastdrag = false;
-
-public:
-	LsFastDrag(){
-		lsdragms = false;
-		lspritime = 0;		// privous time;
-		lsmintimegap = 10;	// in millisecond;
-
-		lsdragdis = false;
-		lsprix = 0;			// privous mouse location;
-		lspriy = 0;
-	}
 
 	int lscalDistance(int x, int y)
 	{
@@ -403,6 +393,17 @@ public:
 		else
 			lspritime = ms;
 		return ms;
+	}
+
+public:
+	LsFastDrag(){
+		lsdragms = false;
+		lspritime = 0;		// privous time;
+		lsmintimegap = 10;	// in millisecond;
+
+		lsdragdis = false;
+		lsprix = 0;			// privous mouse location;
+		lspriy = 0;
 	}
 
 	bool isInDragArea(int x, int y)
@@ -513,6 +514,11 @@ public:
 	
 	TCHAR mfilename[1024];
 	WindowInfo * lswinfix;
+	void updateMarkbar()
+	{
+		::InvalidateRect(lswinfix->hwndCanvas, mfastmark.getBarrc(), true);
+		::UpdateWindow(lswinfix->hwndCanvas);
+	}
 
 	POINT lsscreentoClient(int x, int y)
 	{
@@ -527,25 +533,13 @@ public:
 		mfastmark.drawMarks(hdc, ps);
 		mfastmark.lsdrawCurpos(hdc, lsgetPosPrecent(win));
 	}
-	void lsonMouseLeftButtonDbClick(WindowInfo& win, int x, int y, WPARAM key)
-	{
-		// add bookmark;
-		int pos = lsgetCurrentPos(win);
-		
-		if (mfastmark.lsaddMark(pos,lsgetPageNo(),lssi.nMax))
-		{
-			//lsdebugout(TEXT(">DbClick: add mark ok\r\n"));
-			updateMarkbar();
-		}
-	}
 	bool lsonMouseLeftButtonDown(WindowInfo& win, int x, int y, WPARAM key)
 	{
 		//lsdebugout(TEXT(">lsonMouseLeftButtonDown: (x,y)=(%d,%d)\r\n"), x, y);
-		map<int, lsmarkinfo_t>::iterator it = mfastmark.lsfindMark(x, y);
-		if (it != mfastmark.lsmarkmap.end())
+		lsmarkinfo_t * info = mfastmark.findMarkinfo(x, y);
+		if (info != NULL)
 		{
-			
-			lsgotoPos(win, it->first, it->second.posmax);
+			lsgotoPos(win, info->pos, info->posmax);
 			return true;
 		}
 		else
@@ -556,6 +550,16 @@ public:
 		//lsdebugout(TEXT(">lsonMouseLeftButtonUp: (x,y)=(%d,%d)\r\n"), x, y);
 		return false;
 	}
+	void lsonMouseLeftButtonDbClick(WindowInfo& win, int x, int y, WPARAM key)
+	{
+		// add bookmark;
+		int pos = lsgetCurrentPos(win);		
+		if (mfastmark.lsaddMark(pos,lsgetPageNo(),lssi.nMax))
+		{
+			//lsdebugout(TEXT(">DbClick: add mark ok\r\n"));
+			updateMarkbar();
+		}
+	}
 	bool lsonMouseRightButtonDown(WindowInfo& win, int x, int y, WPARAM key)
 	{
 		//lsdebugout(TEXT(">lsonMouseRightButtonDown: (x,y)=(%d,%d)\r\n"), x, y);
@@ -564,9 +568,6 @@ public:
 		{
 			mfastmark.lsdelMark(info->pos);
 			updateMarkbar();
-			//lsmarkmap.erase(it);
-			//::InvalidateRect(win.hwndCanvas, &lsbarrc, true);
-			//::UpdateWindow(win.hwndCanvas);
 			return true;
 		}
 		else
@@ -576,17 +577,10 @@ public:
 	lsmarkinfo_t * mmarkinfo;
 	bool lsonPanBegin(int x, int y)
 	{
+		// record mark info;
 		POINT p = lsscreentoClient(x, y);
 		mmarkinfo = mfastmark.findMarkinfo(p.x, p.y);
-		//if (lsit != lsmarkmap.end())
-		//	lsdebugout(TEXT(">lsonPanbegin: in.\r\n"));
-
 		return false;
-	}
-	void updateMarkbar()
-	{
-		::InvalidateRect(lswinfix->hwndCanvas, mfastmark.getBarrc(), true);
-		::UpdateWindow(lswinfix->hwndCanvas);
 	}
 	bool lsonPanEnd(int x, int y)
 	{
@@ -599,7 +593,7 @@ public:
 		}
 		return false;
 	}
-	// --------------------------------------------------------------------------
+
 	bool onDragStart(int x, int y)
 	{
 		return mfastdrag.lsonDragStart(x, y);
@@ -627,8 +621,6 @@ class LsMarkDoc
 private:
 	int mcount;
 	map<int, LsFun*> mdocmarks;
-
-public:
 	map<int, LsFun*>::iterator find(TCHAR * name)
 	{
 		map<int, LsFun*>::iterator it;
@@ -641,6 +633,24 @@ public:
 		}
 		return it;
 	}
+
+public:
+	LsMarkDoc(){
+		mcount = 0;
+	}
+	~LsMarkDoc(){
+		map<int, LsFun*>::iterator it;
+		for (it = mdocmarks.begin(); it != mdocmarks.end(); it++)
+		{
+			if (it->second)
+			{
+				delete it->second;
+				it->second = NULL;
+			}
+		}
+		mdocmarks.clear();
+	}
+
 	LsFun* findDoc(TCHAR *name)
 	{
 		LsFun * fun = NULL;
@@ -680,21 +690,6 @@ public:
 			}
 			mdocmarks.erase(it);
 		}
-	}
-	LsMarkDoc(){
-		mcount = 0;
-	}
-	~LsMarkDoc(){
-		map<int, LsFun*>::iterator it;
-		for (it = mdocmarks.begin(); it != mdocmarks.end(); it++)
-		{
-			if (it->second)
-			{
-				delete it->second;
-				it->second = NULL;
-			}
-		}
-		mdocmarks.clear();
 	}
 };
 
